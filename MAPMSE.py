@@ -29,7 +29,7 @@ def UKData():
 
 
 # In[3]:
-
+'''
 np.random.seed(0)
 # simulate data
 N = 30
@@ -41,7 +41,7 @@ pool[:N-1] = 0
 # suspects = np.random.choice(pool,replace=False,size=N)
 
 
-#suspects = np.zeros((suspect_count, N),dtype=bool)
+suspects = np.zeros((suspect_count, N),dtype=bool)
 
 probs = np.exp(-np.arange(N))
 probs = np.append(np.ones(N-1),probs)
@@ -51,6 +51,7 @@ for s in range(suspect_count):
 suspects, counts = np.unique(suspects, return_counts=True, axis=0)
 print(counts)
 print(counts.shape)
+'''
 suspects, counts, N, suspect_count = UKData()
 
 
@@ -62,7 +63,7 @@ def compute_log_lambdas(mu,alphas,betas,lists):
     # np.sum(lists * betas, axis=1)
 
     betas_summed = np.zeros(lists.shape[0])
-    for i in range(lists.shape[0])
+    for i in range(lists.shape[0]):
         betas_summed[i] = np.sum(betas[suspects[i] > 0][:, suspects[i] > 0]) / 2
         # print(i/lists.shape[0])
 
@@ -92,11 +93,13 @@ def neg_likelihood_alphas_only(x,lists,counts):
     alphas = np.repeat([x[1:n+1]], lists.shape[0], axis=0)
     # print(alphas)
     # print(lists)
-    log_lambdas = x[0] + np.sum(lists * alphas, axis=1)  # + \
+    log_lambdas = x[0] + np.sum(lists * alphas, axis=1)  #only those lambdas where the list count is nonzero.
+
+    lambdas = np.exp(log_lambdas)
 
     exp_params = np.exp(x)
 
-    return -(np.sum(counts * log_lambdas) - exp_params[0] * np.prod(exp_params[1:] + 1))
+    return -(np.sum(counts * log_lambdas) - exp_params[0] * np.prod(exp_params[1:] + 1) + exp_params[0])
 
 
 def neg_derivative_vectorized(x, A, counts):
@@ -104,8 +107,8 @@ def neg_derivative_vectorized(x, A, counts):
 
 def neg_derivative_alphas_only(x,lists,counts):
     exp_params = np.exp(x)
-    helper = np.prod(exp_params[1:] + 1)
-    del_mu = np.sum(counts) - exp_params[0]*helper
+    helper =  np.prod(exp_params[1:] + 1)
+    del_mu = np.sum(counts) - exp_params[0]*helper +exp_params[0]
     del_alphas = np.sum(lists * counts[:, np.newaxis], axis = 0) - exp_params[0]*helper*exp_params[1:]/(exp_params[1:]+1)
 
     return -np.append(del_mu,del_alphas)
@@ -154,13 +157,13 @@ x = np.append(np.append(mu, alphas),betas)
 #bnds = [(0,None)]
 #bnds += ([(None,None)]*(x.shape[0] - 1))
 
-sol = minimize(neg_likelihood_vectorized, x, (A,counts),method='L-BFGS-B',jac=neg_derivative_vectorized,callback=callbackF)#, bounds=bnds)
+#sol = minimize(neg_likelihood_vectorized, x, (A,counts),method='L-BFGS-B',jac=neg_derivative_vectorized,callback=callbackF)#, bounds=bnds)
 
-print(sol)
-print(np.exp(sol.x[0]))
+#print(sol)
+#print(np.exp(sol.x[0]))
 x = np.append(mu,alphas)
 
-sol = minimize(neg_likelihood_alphas_only, x, (suspects,counts),method='L-BFGS-B', jac=neg_derivative_alphas_only,callback=callbackF_alphas_only)
+sol = minimize(neg_likelihood_alphas_only, x, (suspects,counts), method='L-BFGS-B', jac=neg_derivative_alphas_only, callback=callbackF_alphas_only)
 
 print(sol)
 print(np.exp(sol.x[0]))
