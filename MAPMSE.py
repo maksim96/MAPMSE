@@ -79,13 +79,6 @@ def compute_log_lambdas(x,A):
 
 #I forget on almost all funcutions here to use only one half of the betas matrix!!!!!
 
-def likelihood(lists, counts, mu, alphas, betas):
-    log_lambdas = compute_log_lambdas(mu,alphas,betas,lists)
-
-    lambdas = np.exp(log_lambdas)
-    # print(log_lambdas,lambdas)
-    return np.sum(counts * log_lambdas - lambdas), lambdas
-
 
 def neg_likelihood_vectorized(x, A, counts):
     log_lambdas = compute_log_lambdas(x,A)
@@ -106,67 +99,6 @@ def neg_likelihood_alphas_only(x,lists,counts):
     return -(np.sum(counts * log_lambdas) - exp_params[0] * np.prod(exp_params[1:] + 1))
 
 
-# log exponential prior with parameter = 1. pdf = e^-x for x >= 0, 0 o/w
-def prior_exp(mu, alphas, betas):
-    all_params = np.append(np.append(mu, alphas), betas.flatten())
-    if np.any(all_params < 0):
-        return -np.inf
-    return np.sum(-all_params)
-
-
-# log_prior
-def prior_almost_uniform(mu, alphas, betas):
-    w = 20
-    eps = 0.0001
-    height = 1 / (w - 2 / 3 * eps)
-    all_params = np.append(np.append(mu, alphas), betas.flatten())
-    result = np.zeros(all_params.shape[0])
-
-    x = all_params[(all_params > 0) & (all_params < eps)]
-    result[(all_params > 0) & (all_params < eps)] = -height / (eps * eps) * x ** 2 + 2 * height / eps * x
-
-    x = all_params[(all_params >= eps) & (all_params < w - eps)]
-    result[(all_params >= eps) & (all_params < w - eps)] = height
-
-    x = all_params[(all_params >= w - eps) & (all_params < w)]
-    result[(all_params >= w - eps) & (all_params < w)] = -height / (eps * eps) * (w - x) ** 2 + 2 * height / eps * (
-                w - x)
-
-    return np.sum(np.log(result))
-
-
-def hyperbole_barrier(mu, alphas, betas):
-    lower = np.tril_indices(betas.shape[0], -1)
-    all_params = np.append(np.append(mu, alphas), betas[lower].flatten())
-    if np.any(all_params < 0):
-        return -np.inf
-    return -np.sum(10 / (all_params))
-
-
-def derivative(lists, counts, mu, alphas, betas, lambdas):
-    del_mu = np.sum(counts - lambdas)
-
-    del_alphas = np.sum(lists * counts[:, np.newaxis] - lists * lambdas[:, np.newaxis], axis=0)
-
-    A = lists * counts[:, np.newaxis]
-
-    del_betas = np.zeros(betas.shape)
-
-    for i in range(alphas.shape[0]):
-        for j in range(i + 1, alphas.shape[0]):
-            lists_with_beta = (A[:, i] > 0) & (A[:, j] > 0)
-            if A[lists_with_beta].size != 0:
-                del_betas[i, j] = np.sum(A[lists_with_beta,i] - lambdas[lists_with_beta])
-
-    del_betas += del_betas.transpose()
-
-
-
-    return del_mu, del_alphas, del_betas
-    # print(del_betas)
-    # print(del_alphas)
-
-
 def neg_derivative_vectorized(x, A, counts):
     return -(np.sum(A*counts - A*np.exp(compute_log_lambdas(x,A)), axis = 1))# + 2*x
 
@@ -178,48 +110,6 @@ def neg_derivative_alphas_only(x,lists,counts):
 
     return -np.append(del_mu,del_alphas)
 
-def der_exp_prior(mu, alphas, betas):
-    all_params = np.append(np.append(mu, alphas), betas.flatten())
-    # if np.any(all_params < 0):
-    #    return np.log(-1/np.sum(all_params[all_params < 0])
-    return -1, -np.ones(alphas.shape), -np.ones(betas.shape)
-
-
-def der_uniform_prior(mu, alphas, betas):
-    w = 20
-    eps = 0.0001
-    height = 1 / (w - 2 / 3 * eps)
-    all_params = np.append(np.append(mu, alphas), betas.flatten())
-    result = np.zeros(all_params.shape[0])
-
-    x = all_params[(all_params > 0) & (all_params < eps)]
-    result[(all_params > 0) & (all_params < eps)] = -2 * height / (eps * eps) * x + 2 * height / eps
-    result[(all_params > 0) & (all_params < eps)] /= -height / (eps * eps) * x ** 2 + 2 * height / eps * x
-
-    x = all_params[(all_params >= w - eps) & (all_params < w)]
-    result[(all_params >= w - eps) & (all_params < w)] = 2 * height / (eps * eps) * (w - x) - 2 * height / eps
-    result[(all_params >= w - eps) & (all_params < w)] /= -height / (eps * eps) * (w - x) ** 2 + 2 * height / eps * (
-                w - x)
-
-    return result[0], result[1:alphas.shape[0] + 1], result[alphas.shape[0] + 1:].reshape(betas.shape)
-
-
-def der_hyperbole_barrier(mu, alphas, betas):
-    lower = np.tril_indices(betas.shape[0], -1)
-    all_params = np.append(np.append(mu, alphas), betas[lower].flatten())
-    if np.any(all_params < 0):
-        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        print("!!!!!!!!!!!!!!!!!!!!!!!!!!ALERT!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-
-    result = 10 / (all_params ** 2)
-    der_betas = np.zeros(betas.shape)
-    der_betas[lower] = result[alphas.shape[0] + 1:]
-    der_betas += der_betas.transpose()
-    return result[0], result[1:alphas.shape[0] + 1], der_betas
-
-
-# In[ ]:
 
 def callbackF(xk):
     print(xk[0], neg_likelihood_vectorized(xk,A,counts))
@@ -252,77 +142,6 @@ def construct_parameter_matrix(lists):
 
     return A, betas.shape[0]
 
-
-def do_own_gradient_descnet():
-
-    max_p = -np.inf
-    best_mu = 0
-    for z in range(1):
-        mu = 11#np.random.rand()*10
-        alphas = np.array([-5.08597335, -2.96526883, -2.29015778, -2.56056138, -3.34577209, -5.04601935])#np.random.rand(N)
-        betas = np.array([[ 0.,          1.49560395,  1.06822664, -0.01815479,  0.2219303,   0.44158877],
-        [ 1.49560395,  0.,          0.16951484, -0.50182992, -2.79659005,  0.21746344],
-        [ 1.06822664,  0.16951484,  0.,         -0.00505412, -1.16342458, 1.64563318],
-        [-0.01815479, -0.50182992, -0.00505412,  0.,         -1.116265,    0.03034782],
-        [ 0.2219303, -2.79659005, -1.16342458, -1.116265,    0.,         -0.71584414],
-        [ 0.44158877,  0.21746344,  1.64563318,  0.03034782, -0.71584414,  0.        ]]) #np.random.rand(N, N)
-        #betas = np.triu(betas, 1)
-        #betas += betas.transpose()
-        # print(betas,alphas,mu)
-        p = 0
-
-        print("mu:", mu)
-
-        test_nus = 0.5 ** np.arange(-5, 30)  # 0.5,0.25,...
-
-        for i in range(10000):
-            p, lambdas = likelihood(suspects, counts, mu, alphas)
-
-            #p += hyperbole_barrier(mu, alphas, betas)
-            print(p)
-            print("============")
-            del_mu, del_alphas, del_betas = derivative(suspects, counts, mu, alphas, betas, lambdas)
-            a, b, c = 0,0,0#der_hyperbole_barrier(mu, alphas, betas)
-            del_mu += a
-            del_alphas += b
-            del_betas += c
-
-            current_best_p = p
-            best_nu = 0.00000001
-            # stupid line search
-            for nu in test_nus:
-                temp_mu = mu + nu * del_mu
-                temp_alphas = alphas + nu * del_alphas
-                temp_betas = betas + nu * del_betas
-                temp_p, _ = likelihood(suspects, counts, temp_mu, temp_alphas, temp_betas)
-                #temp_p += hyperbole_barrier(temp_mu, temp_alphas, temp_betas)
-                # print("    ", nu, temp_p)
-                if temp_p > current_best_p:
-                    current_best_p = temp_p
-                    best_nu = nu
-            mu += best_nu * del_mu
-            alphas += best_nu * del_alphas
-            betas += best_nu * del_betas
-
-            # if i %100 == 0 or i < 10:
-            print(best_nu, mu, np.exp(mu))
-            #print(alphas)
-
-            sys.stdout.flush()
-            # print(alphas)
-            # print(betas)
-            if p > max_p:
-                max_p = p
-                best_mu = mu
-
-        print("=============================================================")
-        print("=============================================================")
-        print("=============================================================")
-
-
-    print(max_p, best_mu, np.exp(best_mu))
-
-np.random.seed
 
 A,beta_count = construct_parameter_matrix(suspects)
 
