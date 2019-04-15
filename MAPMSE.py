@@ -11,66 +11,13 @@ import sys
 from scipy.optimize import minimize, LinearConstraint
 from sympy.utilities.iterables import multiset_permutations
 import itertools
+import datagenerator
 
 # In[2]:
 
 
-def UKData():
-    suspects = np.array([[1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1],
-                         [0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1],
-                         [0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 1],
-                         [0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1],
-                         [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0],
-                         [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0]]).transpose()
-
-    counts = np.array([54, 463, 907, 695, 316, 57, 15, 19, 3, 56, 19, 1, 3, 69, 10, 31, 8, 6, 1, 1, 1, 4, 3, 1, 1])
-
-    '''
-    c = np.zeros((25,8)) 
-    c[:,2:] = np.fliplr(suspects.T)
-    c =c.astype(np.bool) 
-    d = np.zeros(64) 
-    d[np.packbits(c,axis=1).flatten()] = counts     #only works for maximum 8bith 
-    d = d.astype(np.int) #how to get count_all
-    count_all=d[1:] #this is probably needed
-    '''
-    counts_all =np.array([ 54, 463,  15, 907,  19,  56,   1, 695,   3,  19,   1,  69,   0,
-         4,   1, 316,   0,   1,   0,  10,   0,   0,   0,   8,   0,   0,
-         0,   0,   0,   0,   0,  57,   0,   3,   0,  31,   0,   3,   0,
-         6,   0,   0,   0,   1,   0,   0,   0,   1,   0,   0,   0,   0,
-         0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0])
-
-    N = 6
-    suspect_count = np.sum(counts)
-    return suspects, counts, N, suspect_count, counts_all
 
 
-# In[3]:
-'''
-np.random.seed(0)
-# simulate data
-N = 30
-suspect_count = 10000
-
-pool = np.ones(2 * N - 1)
-pool[:N-1] = 0
-
-# suspects = np.random.choice(pool,replace=False,size=N)
-
-
-suspects = np.zeros((suspect_count, N),dtype=bool)
-
-probs = np.exp(-np.arange(N))
-probs = np.append(np.ones(N-1),probs)
-probs /= np.sum(probs)
-for s in range(suspect_count):
-    suspects[s] = np.random.choice(pool, replace=False, p=probs,size=N)
-suspects, counts = np.unique(suspects, return_counts=True, axis=0)
-print(counts)
-print(counts.shape)
-'''
-suspects, counts, N, suspect_count,counts_exp = UKData()
-counts_copy = counts
 
 def get_index_matrix_alphas_only(N):
     A = np.array(list(itertools.product([0, 1], repeat=N))).T
@@ -101,6 +48,15 @@ def get_lambda_matrix(N, withoutLambdaEmptySet=True):
     beta_indexer = np.floor(np.dot(alpha_indexer[:,1:], alphas_to_betas)/2)
 
     return np.append(alpha_indexer,beta_indexer, axis=1)
+
+def get_pruned_lambda_matrix(counts,intersections,N):
+    keep_betas = []
+    for i in range(N):
+        for j in range(i+1,N):
+            if np.sum(counts[intersections[:,i]*intersections[:,j] > 0]) > 0:
+                keep_betas.append([i,j])
+
+    return keep_betas
 
 
 def compute_log_lambdas(mu,alphas,betas,lists):
@@ -208,6 +164,7 @@ def neg_derrivative_naive(x, parameter_indexer, lambda_indexer, counts, enforce_
     derr = -np.dot(parameter_indexer, counts - lambdas)
     derr[enforce_zero] = 0
     return derr
+
 def optimize_naive(counts,N,x,enforce_zero=None):
     if enforce_zero is None:
         enforce_zero = [False]*x.size
@@ -216,38 +173,51 @@ def optimize_naive(counts,N,x,enforce_zero=None):
     sol = minimize(neg_likelihood_naive, x, (parameter_indexer, lambda_indexer, counts, enforce_zero), method='L-BFGS-B', jac=neg_derrivative_naive)
     print(sol)
     print(np.exp(sol.x[0]))
-A,beta_count = construct_parameter_matrix(suspects)
 
-mu = np.random.rand()
-alphas = np.zeros(N)#-10*np.ones(N)#np.random.rand(N)
-betas = np.zeros(beta_count)#np.random.rand(beta_count)
 
-x = np.append(np.append(mu, alphas),betas)
+if __name__ == '__main__':
 
-#bnds = [(0,None)]
-#bnds += ([(None,None)]*(x.shape[0] - 1))
 
-#sol = minimize(neg_likelihood_vectorized, x, (A,counts),method='L-BFGS-B',jac=neg_derivative_vectorized,callback=callbackF)#, bounds=bnds)
 
-#print(sol)
-#print(np.exp(sol.x[0]))
+    suspects, counts, N, suspect_count,counts_exp = datagenerator.UKData()
+    counts_copy = counts
 
-index_matrix = get_index_matrix(3)
-print(index_matrix)
+    A,beta_count = construct_parameter_matrix(suspects)
 
-x = np.append(mu,alphas)
+    get_pruned_lambda_matrix(counts,suspects,N)
 
-sol = minimize(neg_likelihood_alphas_only, x, (suspects,counts), method='L-BFGS-B', jac=neg_derivative_alphas_only, callback=callbackF_alphas_only)
+    mu = np.random.rand()
+    alphas = np.zeros(N)#-10*np.ones(N)#np.random.rand(N)
+    betas = np.zeros(beta_count)#np.random.rand(beta_count)
 
-print(sol)
-print(np.exp(sol.x[0]))
+    x = np.append(np.append(mu, alphas),betas)
 
-print("===========================")
-print("===========================")
-print("===========================")
-#np.seterr(all='raise')
-x = np.random.randn(7+15)
-enforce_zeros = np.zeros(x.size).astype(bool)
-enforce_zeros[15:] = True
-x[enforce_zeros] = 0
-optimize_naive(counts_exp, 6, x, enforce_zeros)
+    #bnds = [(0,None)]
+    #bnds += ([(None,None)]*(x.shape[0] - 1))
+
+    #sol = minimize(neg_likelihood_vectorized, x, (A,counts),method='L-BFGS-B',jac=neg_derivative_vectorized,callback=callbackF)#, bounds=bnds)
+
+    #print(sol)
+    #print(np.exp(sol.x[0]))
+
+    index_matrix = get_index_matrix(3)
+    print(index_matrix)
+
+    x = np.append(mu,alphas)
+
+    #sol = minimize(neg_likelihood_alphas_only, x, (suspects,counts), method='L-BFGS-B', jac=neg_derivative_alphas_only, callback=callbackF_alphas_only)
+
+    #print(sol)
+    #print(np.exp(sol.x[0]))
+
+    print("===========================")
+    print("===========================")
+    print("===========================")
+    #np.seterr(all='raise')
+    x = np.random.randn(7+15)
+    enforce_zeros = np.zeros(x.size).astype(bool)
+    #enforce_zeros[15:] = True
+    x[enforce_zeros] = 0
+    x[0] = 9.39
+    optimize_naive(counts_exp, 6, x, enforce_zeros)
+
