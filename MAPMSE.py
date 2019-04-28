@@ -155,7 +155,7 @@ def construct_parameter_matrix(lists):
 def neg_likelihood_naive(x, parameter_indexer, lambda_indexer, counts, enforce_zero):
     log_lambdas = np.dot(lambda_indexer, x)
     lambdas = np.exp(log_lambdas)
-    print(-(np.sum(counts*log_lambdas - lambdas)))
+    #print(-(np.sum(counts*log_lambdas - lambdas)))
     return -(np.sum(counts*log_lambdas - lambdas))
 
 #expects exponential/full (also empty intersection) representation
@@ -171,16 +171,11 @@ def optimize_naive(counts,N,x,enforce_zero=None):
     parameter_indexer = get_index_matrix(N)
     lambda_indexer = get_lambda_matrix(N)
     sol = minimize(neg_likelihood_naive, x, (parameter_indexer, lambda_indexer, counts, enforce_zero), method='L-BFGS-B', jac=neg_derrivative_naive)
-    print(sol)
-    print(np.exp(sol.x[0]))
+    return sol, parameter_indexer, lambda_indexer, enforce_zero
 
-
-if __name__ == '__main__':
-
-
-
+def old_style_UK_fitting():
     suspects, counts, N, suspect_count,counts_exp = datagenerator.UKData()
-    counts_copy = counts
+    counts_copy = counts_exp
 
     A,beta_count = construct_parameter_matrix(suspects)
 
@@ -210,14 +205,42 @@ if __name__ == '__main__':
     #print(sol)
     #print(np.exp(sol.x[0]))
 
-    print("===========================")
-    print("===========================")
-    print("===========================")
-    #np.seterr(all='raise')
-    x = np.random.randn(7+15)
-    enforce_zeros = np.zeros(x.size).astype(bool)
-    #enforce_zeros[15:] = True
-    x[enforce_zeros] = 0
-    x[0] = 9.39
-    optimize_naive(counts_exp, 6, x, enforce_zeros)
+def synthetic_data_experiments():
+    correct = 0
+    experiment_count = 100
+    for i in range(experiment_count):
+        N = 15
+        param_count = 1 + N + N * (N - 1) // 2
+        true_params, counts_exp = datagenerator.sample_poisson_counts_naive(N)
+        # np.seterr(all='raise')
+        x = np.random.randn(param_count)
+        enforce_zeros = np.zeros(x.size).astype(bool)
+        # enforce_zeros[15:] = True
+        # x[enforce_zeros] = 0
+        # x[0] = 9.39
+        # print(true_params)
+        # print(counts_exp)
+        fitted_exp_mu = optimize_naive(counts_exp, N, x, enforce_zeros)
+        if np.abs(np.exp(true_params[0]) - fitted_exp_mu) / np.exp(true_params[0]) < 0.05:
+            correct += 1
+        print(np.exp(true_params[0]), fitted_exp_mu,
+              np.abs(np.exp(true_params[0]) - fitted_exp_mu) / np.exp(true_params[0]),
+              np.abs(np.exp(true_params[0]) - fitted_exp_mu) / np.exp(true_params[0]) < 0.05)
 
+    print(correct / experiment_count)
+
+if __name__ == '__main__':
+    intersection_indexer, counts, list_count, total_suspect_count, counts_exponential_representation = datagenerator.UKData()
+    x = np.random.randn(1 + 6 + 15) #one mu, 6 alphas, 15 betas
+    sol, parameter_indexer, lambda_indexer, enforce_zero = optimize_naive(counts_exponential_representation, list_count, x)
+
+    print(sol)
+    print(sol.x)
+
+    y = np.copy(sol.x)
+
+    useles_parameters = np.where(np.dot(parameter_indexer,counts_exponential_representation) == 0)[0]
+
+    y[useles_parameters] = -10000 #actually we want -np.inf, but this causes problems currently due to 0*np.inf = nan
+    print(y)
+    print(neg_likelihood_naive(y, parameter_indexer, lambda_indexer, counts_exponential_representation, enforce_zero) - sol.fun)
