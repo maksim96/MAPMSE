@@ -153,10 +153,16 @@ def construct_parameter_matrix(lists):
 
 #expects exponential/full (also empty intersection) representation
 def neg_likelihood_naive(x, parameter_indexer, lambda_indexer, counts, enforce_zero):
-    log_lambdas = np.dot(lambda_indexer, x)
-    lambdas = np.exp(log_lambdas)
-    #print(-(np.sum(counts*log_lambdas - lambdas)))
-    return -(np.sum(counts*log_lambdas - lambdas))
+    #as lambda_indexer is just an index matrix we can safely set 0*np.inf = 0 here.
+    with np.errstate(invalid='ignore'):
+        log_lambdas = lambda_indexer*x
+        log_lambdas[np.isnan(log_lambdas)] = 0
+        log_lambdas = np.sum(log_lambdas, axis=1)
+        lambdas = np.exp(log_lambdas)
+
+        counts_times_log_lambdas_nan_safe = counts*log_lambdas
+        counts_times_log_lambdas_nan_safe[np.isnan(counts_times_log_lambdas_nan_safe)] = 0
+        return -(np.sum(counts_times_log_lambdas_nan_safe - lambdas))
 
 #expects exponential/full (also empty intersection) representation
 def neg_derrivative_naive(x, parameter_indexer, lambda_indexer, counts, enforce_zero):
@@ -241,6 +247,6 @@ if __name__ == '__main__':
 
     useles_parameters = np.where(np.dot(parameter_indexer,counts_exponential_representation) == 0)[0]
 
-    y[useles_parameters] = -10000 #actually we want -np.inf, but this causes problems currently due to 0*np.inf = nan
+    y[useles_parameters] = -np.inf #actually we want -np.inf, but this causes problems currently due to 0*np.inf = nan
     print(y)
     print(neg_likelihood_naive(y, parameter_indexer, lambda_indexer, counts_exponential_representation, enforce_zero) - sol.fun)
