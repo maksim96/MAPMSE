@@ -3,10 +3,15 @@ import MAPMSE
 
 def sample_poisson_counts_naive(list_count, parameter=None, parameter_to_lambdas=None):
     if parameter is None:
-        parameter = np.random.randn(list_count + list_count*(list_count-1)//2)
+        parameter = np.zeros(1 + list_count + list_count*(list_count-1)//2)
+        parameter[0] = 20 + 2*np.random.randn()
+        parameter[1:list_count+1] = 1*np.random.randn(list_count)
+        parameter[list_count+1:] = 0.1*np.random.randn(list_count*(list_count-1)//2)
+        #parameter = np.clip(parameter, -3,3)
+        #parameter /= np.abs(np.max(parameter))/10
     if parameter_to_lambdas is None:
         parameter_to_lambdas = MAPMSE.get_lambda_matrix(list_count)
-    lambdas = np.dot(parameter_to_lambdas, parameter)
+    lambdas = np.exp(np.dot(parameter_to_lambdas, parameter))
     return parameter, np.random.poisson(lambdas, lambdas.size)
 
 
@@ -31,7 +36,7 @@ def sample_suspect_to_list_naive(list_count=50, suspect_count=100000):
     return suspects, counts
 
 def UKData():
-    suspects = np.array([[1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1],
+    intersection_indexer = np.array([[1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1],
                          [0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1],
                          [0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 1],
                          [0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1],
@@ -49,12 +54,12 @@ def UKData():
     d = d.astype(np.int) #how to get count_all
     count_all=d[1:] #this is probably needed
     '''
-    counts_all =np.array([ 54, 463,  15, 907,  19,  56,   1, 695,   3,  19,   1,  69,   0,
+    counts_exponential_representation =np.array([ 54, 463,  15, 907,  19,  56,   1, 695,   3,  19,   1,  69,   0,
          4,   1, 316,   0,   1,   0,  10,   0,   0,   0,   8,   0,   0,
          0,   0,   0,   0,   0,  57,   0,   3,   0,  31,   0,   3,   0,
          6,   0,   0,   0,   1,   0,   0,   0,   1,   0,   0,   0,   0,
          0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0])
 
-    N = 6
-    suspect_count = np.sum(counts)
-    return suspects, counts, N, suspect_count, counts_all
+    list_count = 6
+    total_suspect_count = np.sum(counts)
+    return intersection_indexer, counts, list_count, total_suspect_count, counts_exponential_representation
