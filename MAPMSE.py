@@ -4,212 +4,14 @@
 
 
 import numpy as np
-import matplotlib.pyplot as plt
-from scipy.stats import beta
-from scipy.special import factorial
-import sys
-from scipy.optimize import minimize, LinearConstraint
-from sympy.utilities.iterables import multiset_permutations
-import itertools
 import datagenerator
 
 # In[2]:
+import firsttrylikelihood
+import naivelikelihood
+from naivelikelihood import neg_likelihood_naive, neg_derrivative_naive
 
 
-
-
-
-def get_index_matrix_alphas_only(N):
-    A = np.array(list(itertools.product([0, 1], repeat=N))).T
-    A = np.append([np.ones(2**N)], A, axis=0)
-    A[0,0] = 0
-    return A[:,1:]
-
-def get_index_matrix(N):
-    A = get_index_matrix_alphas_only(N)
-    B = A[1:]
-    combinations = np.array(list(itertools.combinations(range(B.shape[0]), 2)))
-    B = np.prod(B[combinations],axis=1) #all possible row pairs
-    B = np.append(A, B, axis=0)
-    return B
-
-def get_lambdas_matrix_alphas_only(N, withoutLambdaEmptySet=True):
-    alpha_indexer = np.array(list(itertools.product([0, 1], repeat=N)))
-    alpha_indexer = np.append(np.ones(alpha_indexer.shape[0])[:, np.newaxis], alpha_indexer, axis=1)
-    if withoutLambdaEmptySet:
-        return alpha_indexer[1:]
-    else:
-        return alpha_indexer
-
-#order of betas is given by multiset_permutations
-def get_lambda_matrix(N, withoutLambdaEmptySet=True):
-    alpha_indexer = get_lambdas_matrix_alphas_only(N, withoutLambdaEmptySet)
-    alphas_to_betas = np.fliplr(np.array(list(multiset_permutations([0]*(N-2)+[1,1]))).T)
-    beta_indexer = np.floor(np.dot(alpha_indexer[:,1:], alphas_to_betas)/2)
-
-    return np.append(alpha_indexer,beta_indexer, axis=1)
-
-def get_pruned_lambda_matrix(counts,intersections,N):
-    keep_betas = []
-    for i in range(N):
-        for j in range(i+1,N):
-            if np.sum(counts[intersections[:,i]*intersections[:,j] > 0]) > 0:
-                keep_betas.append([i,j])
-
-    return keep_betas
-
-
-def compute_log_lambdas(mu,alphas,betas,lists):
-    alphas = np.repeat([alphas], suspects.shape[0], axis=0)
-    # print(alphas)
-    # print(lists)
-    log_lambdas = mu + np.sum(lists * alphas, axis=1)  # + \
-    # np.sum(lists * betas, axis=1)
-
-    betas_summed = np.zeros(lists.shape[0])
-    for i in range(lists.shape[0]):
-        betas_summed[i] = np.sum(betas[suspects[i] > 0][:, suspects[i] > 0]) / 2
-        # print(i/lists.shape[0])
-
-    log_lambdas += betas_summed
-
-    return log_lambdas
-
-def compute_log_lambdas(x,A):
-    return np.sum(A * x[:, np.newaxis], axis=0)
-
-
-
-
-
-# In[76]:
-
-def neg_likelihood_vectorized(x, A, counts):
-    log_lambdas = compute_log_lambdas(x,A)
-
-    lambdas = np.exp(log_lambdas)
-    # print(log_lambdas,lambdas)
-    return -np.sum(counts * log_lambdas - lambdas)# + np.dot(x,x)
-
-def neg_likelihood_alphas_only(x,lists,counts):
-    n = lists.shape[1]
-    alphas = np.repeat([x[1:n+1]], lists.shape[0], axis=0)
-    # print(alphas)
-    # print(lists)
-    log_lambdas = x[0] + np.sum(lists * alphas, axis=1)  #only those lambdas where the list count is nonzero.
-
-    exp_params = np.exp(x)
-
-    return -(np.sum(counts * log_lambdas) - exp_params[0] * np.prod(exp_params[1:] + 1) + exp_params[0])
-
-
-def neg_derivative_vectorized(x, A, counts):
-    return -(np.sum(A*counts - A*np.exp(compute_log_lambdas(x,A)), axis = 1))# + 2*x
-
-def neg_derivative_alphas_only(x,lists,counts):
-    exp_params = np.exp(x)
-    helper =  np.prod(exp_params[1:] + 1)
-    del_mu = np.sum(counts) - exp_params[0]*helper +exp_params[0]
-    #this computation is indeed correct
-    del_alphas = np.sum(lists * counts[:, np.newaxis], axis = 0) - exp_params[0]*helper*exp_params[1:]/(exp_params[1:]+1)
-
-    return -np.append(del_mu,del_alphas)
-
-
-
-
-def callbackF(xk):
-    print(xk[0], neg_likelihood_vectorized(xk,A,counts))
-
-def callbackF_alphas_only(xk):
-    print(xk[0], neg_likelihood_alphas_only(xk,suspects,counts))
-
-#returns parameter_matrix and count of betas
-def construct_parameter_matrix(lists):
-    list_count = lists.shape[1]
-    intersection_count = lists.shape[0]
-    A = np.zeros((1 + list_count, intersection_count))
-    A[0] = 1 #mu
-    A[1:list_count + 1] = lists.T #alphas
-    #betas
-
-    betas = []
-
-    for i in range(list_count - 1):
-        for j in range(i + 1, list_count - 1):
-            lists_with_beta = (lists[:, i] > 0) & (lists[:, j] > 0)
-            if np.any(lists[lists_with_beta]):
-                v = np.zeros(intersection_count)
-                v[lists_with_beta] = 1
-                betas.append(v)
-
-    betas = np.array(betas)
-
-    A = np.vstack((A,betas))
-
-    return A, betas.shape[0]
-
-
-
-#expects exponential/full (also empty intersection) representation
-def neg_likelihood_naive(x, parameter_indexer, lambda_indexer, counts, enforce_zero):
-    #as lambda_indexer is just an index matrix we can safely set 0*np.inf = 0 here.
-    with np.errstate(invalid='ignore'):
-        log_lambdas = lambda_indexer*x
-        log_lambdas[np.isnan(log_lambdas)] = 0
-        log_lambdas = np.sum(log_lambdas, axis=1)
-        lambdas = np.exp(log_lambdas)
-
-        counts_times_log_lambdas_nan_safe = counts*log_lambdas
-        counts_times_log_lambdas_nan_safe[np.isnan(counts_times_log_lambdas_nan_safe)] = 0
-        return -(np.sum(counts_times_log_lambdas_nan_safe - lambdas))
-
-#expects exponential/full (also empty intersection) representation
-def neg_derrivative_naive(x, parameter_indexer, lambda_indexer, counts, enforce_zero):
-    lambdas = np.exp(np.dot(lambda_indexer, x))
-    derr = -np.dot(parameter_indexer, counts - lambdas)
-    derr[enforce_zero] = 0
-    return derr
-
-def optimize_naive(counts,N,x,enforce_zero=None):
-    if enforce_zero is None:
-        enforce_zero = [False]*x.size
-    parameter_indexer = get_index_matrix(N)
-    lambda_indexer = get_lambda_matrix(N)
-    sol = minimize(neg_likelihood_naive, x, (parameter_indexer, lambda_indexer, counts, enforce_zero), method='L-BFGS-B', jac=neg_derrivative_naive)
-    return sol, parameter_indexer, lambda_indexer, enforce_zero
-
-def old_style_UK_fitting():
-    suspects, counts, N, suspect_count,counts_exp = datagenerator.UKData()
-    counts_copy = counts_exp
-
-    A,beta_count = construct_parameter_matrix(suspects)
-
-    get_pruned_lambda_matrix(counts,suspects,N)
-
-    mu = np.random.rand()
-    alphas = np.zeros(N)#-10*np.ones(N)#np.random.rand(N)
-    betas = np.zeros(beta_count)#np.random.rand(beta_count)
-
-    x = np.append(np.append(mu, alphas),betas)
-
-    #bnds = [(0,None)]
-    #bnds += ([(None,None)]*(x.shape[0] - 1))
-
-    #sol = minimize(neg_likelihood_vectorized, x, (A,counts),method='L-BFGS-B',jac=neg_derivative_vectorized,callback=callbackF)#, bounds=bnds)
-
-    #print(sol)
-    #print(np.exp(sol.x[0]))
-
-    index_matrix = get_index_matrix(3)
-    print(index_matrix)
-
-    x = np.append(mu,alphas)
-
-    #sol = minimize(neg_likelihood_alphas_only, x, (suspects,counts), method='L-BFGS-B', jac=neg_derivative_alphas_only, callback=callbackF_alphas_only)
-
-    #print(sol)
-    #print(np.exp(sol.x[0]))
 
 def synthetic_data_experiments():
     correct = 0
@@ -226,7 +28,7 @@ def synthetic_data_experiments():
         # x[0] = 9.39
         # print(true_params)
         # print(counts_exp)
-        fitted_exp_mu = optimize_naive(counts_exp, N, x, enforce_zeros)
+        fitted_exp_mu = naivelikelihood.optimize_naive(counts_exp, N, x, enforce_zeros)
         if np.abs(np.exp(true_params[0]) - fitted_exp_mu) / np.exp(true_params[0]) < 0.05:
             correct += 1
         print(np.exp(true_params[0]), fitted_exp_mu,
@@ -235,18 +37,27 @@ def synthetic_data_experiments():
 
     print(correct / experiment_count)
 
-if __name__ == '__main__':
+def exponential_representation_UKData_experiments():
     intersection_indexer, counts, list_count, total_suspect_count, counts_exponential_representation = datagenerator.UKData()
-    x = np.random.randn(1 + 6 + 15) #one mu, 6 alphas, 15 betas
-    sol, parameter_indexer, lambda_indexer, enforce_zero = optimize_naive(counts_exponential_representation, list_count, x)
+    x = np.random.randn(1 + 6 + 15)  # one mu, 6 alphas, 15 betas
+    sol, parameter_indexer, lambda_indexer, enforce_zero = naivelikelihood.optimize_naive(counts_exponential_representation, list_count, x)
 
     print(sol)
     print(sol.x)
 
     y = np.copy(sol.x)
 
-    useles_parameters = np.where(np.dot(parameter_indexer,counts_exponential_representation) == 0)[0]
+    useles_parameters = np.where(np.dot(parameter_indexer, counts_exponential_representation) == 0)[0]
 
-    y[useles_parameters] = -np.inf #actually we want -np.inf, but this causes problems currently due to 0*np.inf = nan
+    y[useles_parameters] = -np.inf
     print(y)
     print(neg_likelihood_naive(y, parameter_indexer, lambda_indexer, counts_exponential_representation, enforce_zero) - sol.fun)
+
+def first_try_UKData():
+    sol, sol_alhpas_only = firsttrylikelihood.old_style_UK_fitting()
+    print(sol.fun, sol.x)
+    print(sol_alhpas_only.fun, sol_alhpas_only.x)
+
+if __name__ == '__main__':
+    first_try_UKData()
+
