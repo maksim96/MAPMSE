@@ -1,5 +1,5 @@
 import numpy as np
-import MAPMSE
+import mapmse
 
 def sample_poisson_counts_naive(list_count, parameter=None, parameter_to_lambdas=None):
     if parameter is None:
@@ -10,7 +10,7 @@ def sample_poisson_counts_naive(list_count, parameter=None, parameter_to_lambdas
         #parameter = np.clip(parameter, -3,3)
         #parameter /= np.abs(np.max(parameter))/10
     if parameter_to_lambdas is None:
-        parameter_to_lambdas = MAPMSE.get_lambda_matrix(list_count)
+        parameter_to_lambdas = mapmse.get_lambda_matrix(list_count)
     lambdas = np.exp(np.dot(parameter_to_lambdas, parameter))
     return parameter, np.random.poisson(lambdas, lambdas.size)
 

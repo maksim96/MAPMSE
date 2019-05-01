@@ -1,17 +1,11 @@
-# coding: utf-8
-
-# In[1]:
-
-
 import numpy as np
-import datagenerator
 
-# In[2]:
-import firsttrylikelihood
+import alphasonlylinearlikelihood
+import datagenerator
+from scipy.optimize import minimize
+import skiplikelihood
 import naivelikelihood
 from naivelikelihood import neg_likelihood_naive, neg_derrivative_naive
-
-
 
 def synthetic_data_experiments():
     correct = 0
@@ -54,9 +48,25 @@ def exponential_representation_UKData_experiments():
     print(neg_likelihood_naive(y, parameter_indexer, lambda_indexer, counts_exponential_representation, enforce_zero) - sol.fun)
 
 def first_try_UKData():
-    sol, sol_alhpas_only = firsttrylikelihood.old_style_UK_fitting()
-    print(sol.fun, sol.x)
-    print(sol_alhpas_only.fun, sol_alhpas_only.x)
+    suspects, counts, N, suspect_count,counts_exp = datagenerator.UKData()
+
+    A,beta_count = skiplikelihood.construct_parameter_matrix(suspects)
+
+    mu = np.random.rand()
+    alphas = np.zeros(N)#-10*np.ones(N)#np.random.rand(N)
+    betas = np.zeros(beta_count)#np.random.rand(beta_count)
+
+    x = np.append(np.append(mu, alphas),betas)
+
+    sol_all = minimize(skiplikelihood.neg_likelihood_vectorized, x, (A, counts), method='L-BFGS-B', jac=skiplikelihood.neg_derivative_vectorized)
+
+
+    x = np.append(mu,alphas)
+
+    sol_alphas_only = minimize(alphasonlylinearlikelihood.neg_likelihood_alphas_only, x, (suspects, counts), method='L-BFGS-B', jac=alphasonlylinearlikelihood.neg_derivative_alphas_only)
+
+    return sol_all, sol_alphas_only
+
 
 if __name__ == '__main__':
     first_try_UKData()
