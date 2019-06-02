@@ -5,14 +5,14 @@ def compute_log_lambdas(x,A):
 
 #this likelihood is merely an approximation of the real likelihood, as we drop all summands -lambda_A if N_A is 0.
 def neg_likelihood_vectorized(x, A, counts):
-    log_lambdas = compute_log_lambdas(x,A)
+    log_lambdas = compute_log_lambdas(x, A)
 
     lambdas = np.exp(log_lambdas)
     # print(log_lambdas,lambdas)
     return -np.sum(counts * log_lambdas - lambdas)# + np.dot(x,x)
 
 def neg_derivative_vectorized(x, A, counts):
-    return -(np.sum(A*counts - A*np.exp(compute_log_lambdas(x,A)), axis = 1))# + 2*x
+    return -(np.sum(A*counts - A*np.exp(compute_log_lambdas(x, A)), axis=1))# + 2*x
 
 #returns parameter_matrix and count of betas
 def construct_parameter_matrix(lists):
@@ -34,6 +34,6 @@ def construct_parameter_matrix(lists):
                 betas.append(v)
 
     betas = np.array(betas)
-    A = np.vstack((A,betas))
+    A = np.vstack((A, betas))
     return A, betas.shape[0]
 
