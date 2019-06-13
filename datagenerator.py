@@ -1,3 +1,5 @@
+import itertools
+
 import numpy as np
 import mapmse
 import naivelikelihood
@@ -7,8 +9,8 @@ def sample_poisson_counts_naive(list_count, parameter=None, parameter_to_lambdas
     if parameter is None:
         parameter = np.zeros(1 + list_count + list_count*(list_count-1)//2)
         parameter[0] = 10 + 2*np.random.randn()
-        parameter[1:list_count+1] = -1 + np.random.randn(list_count)
-        parameter[list_count+1:] = -5 +2*np.random.randn(list_count*(list_count-1)//2)
+        parameter[1:list_count+1] = -1 +np.random.randn(list_count)
+        parameter[list_count+1:] = -np.abs(0.01*np.random.randn(list_count*(list_count-1)//2))
         #parameter = np.clip(parameter, -3,3)
         #parameter /= np.abs(np.max(parameter))/10
     if parameter_to_lambdas is None:
@@ -26,7 +28,8 @@ def compute_lambda_single_beta(parameter, A):
 
     exp_mu = np.exp(parameter[0])
     exp_alphas = np.exp(parameter[A])
-    exp_beta = np.exp(parameter[-1])
+
+    beta = parameter[-1]
 
 
 
@@ -49,39 +52,71 @@ def compute_lambda_single_beta(parameter, A):
         for j in range(K-1,i,-1):
             prev_sum += dp[j]
             dp[j] = exp_alphas[j-1-i]*prev_sum
-            summed_lambda_A += np.power(exp_beta, (i*(i-1))//2)*dp[j]
+            beta_count = 1
+            if i > 0:
+                beta_count = i+1
+            summed_lambda_A += np.exp(beta*beta_count)*dp[j]
 
     summed_lambda_A *= exp_mu
     return summed_lambda_A
 
-def __sample_poisson_recursive__(parameter, K, current_population_size=0, inside=set(), outside=set(), lists=[], counts=[]):
-    candidates = list(set(range(K))-inside-outside)
+num = 1
+def __sample_poisson_recursive__(parameter, K, current_population_size=0, inside=set(), silverman_lists = [], silverman_counts = []):
+    global num
+    max_or_zero = 0
+    if inside:
+        max_or_zero = max(inside)
+    candidates = list(set(range(max_or_zero, K))-inside)
+
     if (len(candidates)== K):
         #first poisson draw
         lambda_all = compute_lambda_single_beta(parameter, range(K))
         current_population_size = np.random.poisson(lambda_all)
-        lists = [[1] * K]
-        counts = [current_population_size]
 
-    lambdas = []
+    intersection_index_vector = np.zeros(K).astype(np.bool)
+    intersection_index_vector[list(inside)] = True
 
-    for c,i in enumerate(candidates):
+    lambda_inside = np.exp(parameter[0]) + np.sum(np.exp(parameter[1:-1][intersection_index_vector])) + np.exp(parameter[-1]*int(len(inside)*(len(inside) - 1)/2))
+
+    #contains the current real lambda and the other summed lambdas
+    lambdas = [lambda_inside]
+
+    for i, c in enumerate(candidates):
         lambdas.append(compute_lambda_single_beta(parameter, candidates[i+1:]))
 
-    subset_populations = np.random.multinomial(current_population_size, lambdas/np.sum(lambdas), size=1).flatten()
+    probabilities = lambdas/np.sum(lambdas)
+    subset_populations = np.random.multinomial(current_population_size, probabilities, size=1).flatten()
 
-    for c, i in enumerate(candidates):
+    #the set represented by inside (the current intersection) has a size > 0 (in Silverman's terms)
+    if subset_populations[0] > 0:
+        silverman_counts.append(subset_populations[0])
+        silverman_lists.append(intersection_index_vector)
+        if num%10000 == 0:
+            print(intersection_index_vector.astype(np.int), subset_populations[0], num)
+        num += 1
+    #else:
+    #    print("test ", intersection_index_vector.astype(np.int), subset_populations[0], num)
+
+    if not candidates:
+        return silverman_lists, silverman_counts
+
+
+    subset_populations = subset_populations[1:]
+
+
+
+    for i, c in enumerate(candidates):
         if subset_populations[i]>0:
-            intersection_index_vector = np.zeros(K).astype(np.bool)
+            intersection_index_vector = np.zeros(K)
             intersection_index_vector[c] = 1
             intersection_index_vector[list(inside)] = 1
 
-            lists.append(list(intersection_index_vector))
-            counts.append(subset_populations[i])
-
-            __sample_poisson_recursive__(parameter, K, current_population_size, inside|set([c]), set(candidates[:i]),lists,counts)
+            #print(intersection_index_vector, subset_populations[i])
 
 
+            __sample_poisson_recursive__(parameter, K, subset_populations[i], inside | set([c]), silverman_lists, silverman_counts)
+
+    return silverman_lists, silverman_counts
 
 
 
@@ -93,14 +128,27 @@ def sample_poisson_counts_single_beta(list_count, parameter=None, parameter_to_l
     :param parameter_to_lambdas:
     :return:
     '''
+
+    global num
+
     if parameter is None:
         parameter = np.zeros(1 + list_count + 1)
-        parameter[0] = 10 + 2*np.random.randn() #mu
-        parameter[1:-1] = -1 + np.random.randn(list_count) #alphas
-        parameter[-1] = -5 +2*np.random.randn() # beta
+        parameter[0] = 5 + 2*np.random.randn() #mu
+        parameter[1:-1] = np.random.randn(list_count) #alphas
+        parameter[-1] = -5 + 2*np.random.randn() # beta
 
 
-    __sample_poisson_recursive__(parameter, list_count)
+    finished_list, finished_counts = __sample_poisson_recursive__(parameter, list_count)
+
+    print(num)
+
+    num = 0
+
+    finished_counts = np.array(finished_counts)
+    finished_list = np.array(finished_list)
+
+    #for i in range(list_count+1):
+    #    print(i,np.mean(finished_counts[np.sum(finished_list,axis=1) == i]))
 
 
 
@@ -169,6 +217,21 @@ def UKData():
     return intersection_indexer, counts, list_count, total_suspect_count, counts_exponential_representation
 
 
-compute_lambda_single_beta(np.array([2,1,2,3,4,1]), np.array([1,2,3,4]))
+def test_lambda_computation():
+    matrix = naivelikelihood.get_lambda_matrix(5, False)
+    parameter = np.random.randn(1+5+10)
 
-sample_poisson_counts_single_beta(6)
+    for idx in itertools.product([0, 1], repeat=5):
+        sum = 0
+        for sum_idx in itertools.product([0, 1], repeat=5):
+            if np.all(np.array(sum_idx) >= np.array(idx)):
+                matrix_idx = int(np.sum(2**np.arange(5)*np.array(sum_idx)))
+                sum +=  np.exp(np.dot(matrix,parameter)[matrix_idx])
+        print(compute_lambda_single_beta(parameter, list(idx)),sum)
+
+if __name__ == "__main__":
+    #test_lambda_computation()
+    np.random.seed(10)
+    for i in range (10):
+        sample_poisson_counts_single_beta(20)
+        print("=========================================================")
