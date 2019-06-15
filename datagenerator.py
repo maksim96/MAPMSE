@@ -1,5 +1,6 @@
 import itertools
-
+import numba
+import random
 import numpy as np
 import mapmse
 import naivelikelihood
@@ -41,6 +42,8 @@ def compute_lambda_single_beta(parameter, A):
 
     summed_lambda_A += 1 + np.sum(dp)
 
+    exp_betas = np.exp(beta*np.arange(1,exp_alphas.size))
+
     for i in range(exp_alphas.size-1):
 
         #dp[:-i] = alphas[:-i]*dp[1:K-(i-1)]
@@ -52,10 +55,7 @@ def compute_lambda_single_beta(parameter, A):
         for j in range(K-1,i,-1):
             prev_sum += dp[j]
             dp[j] = exp_alphas[j-1-i]*prev_sum
-            beta_count = 1
-            if i > 0:
-                beta_count = i+1
-            summed_lambda_A += np.exp(beta*beta_count)*dp[j]
+            summed_lambda_A += exp_betas[i]*dp[j]
 
     summed_lambda_A *= exp_mu
     return summed_lambda_A
@@ -66,11 +66,11 @@ def __sample_poisson_recursive__(parameter, K, current_population_size=0, inside
     max_or_zero = 0
     if inside:
         max_or_zero = max(inside)
-    candidates = list(set(range(max_or_zero, K))-inside)
+    candidates = np.array(list(set(range(max_or_zero, K))-inside))
 
     if (len(candidates)== K):
         #first poisson draw
-        lambda_all = compute_lambda_single_beta(parameter, range(K))
+        lambda_all = compute_lambda_single_beta(parameter, np.arange(K))
         current_population_size = np.random.poisson(lambda_all)
 
     intersection_index_vector = np.zeros(K).astype(np.bool)
@@ -91,13 +91,13 @@ def __sample_poisson_recursive__(parameter, K, current_population_size=0, inside
     if subset_populations[0] > 0:
         silverman_counts.append(subset_populations[0])
         silverman_lists.append(intersection_index_vector)
-        if num%10000 == 0:
+        if num%1000 == 0:
             print(intersection_index_vector.astype(np.int), subset_populations[0], num)
         num += 1
     #else:
     #    print("test ", intersection_index_vector.astype(np.int), subset_populations[0], num)
 
-    if not candidates:
+    if candidates.size == 0:
         return silverman_lists, silverman_counts
 
 
@@ -133,7 +133,8 @@ def sample_poisson_counts_single_beta(list_count, parameter=None, parameter_to_l
 
     if parameter is None:
         parameter = np.zeros(1 + list_count + 1)
-        parameter[0] = 5 + 2*np.random.randn() #mu
+        parameter = numba.float32(parameter)
+        parameter[0] = 2*np.random.randn() #mu
         parameter[1:-1] = np.random.randn(list_count) #alphas
         parameter[-1] = -5 + 2*np.random.randn() # beta
 
@@ -231,7 +232,7 @@ def test_lambda_computation():
 
 if __name__ == "__main__":
     #test_lambda_computation()
-    np.random.seed(10)
+    np.random.seed(2)
     for i in range (10):
-        sample_poisson_counts_single_beta(20)
+        sample_poisson_counts_single_beta(50)
         print("=========================================================")
