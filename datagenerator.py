@@ -1,4 +1,5 @@
 import itertools
+from numba import jit
 import numba
 import random
 import numpy as np
@@ -19,6 +20,7 @@ def sample_poisson_counts_naive(list_count, parameter=None, parameter_to_lambdas
     lambdas = np.exp(np.dot(parameter_to_lambdas, parameter))
     return parameter, np.random.poisson(lambdas, lambdas.size)
 
+@jit(nopython=True)
 def compute_lambda_single_beta(parameter, A):
     '''
     Compute sum A' lambda_A' over all A' \superseteq A in a dynamic programming fashion in time O(|A|^2) instead of naive O(2^|A|)
