@@ -34,6 +34,9 @@ def construct_parameter_matrix(lists):
                 betas.append(v)
 
     betas = np.array(betas)
-    A = np.vstack((A, betas))
-    return A, betas.shape[0]
+    if betas.size > 0:
+        A = np.vstack((A, betas))
+        return A, betas.shape[0]
+    else:
+        return A, 0
 

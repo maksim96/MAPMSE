@@ -1,19 +1,16 @@
 import itertools
-# from numba import jit
-# import numba
-import random
 import numpy as np
-import mapmse
 import naivelikelihood
 from scipy.spatial.distance import pdist
 
+from singlebetalikelihood import compute_lambda_single_beta
 
 def sample_poisson_counts_naive(list_count, parameter=None, parameter_to_lambdas=None):
     if parameter is None:
         parameter = np.zeros(1 + list_count + list_count * (list_count - 1) // 2)
         parameter[0] = 10 + 2 * np.random.randn()
         parameter[1:list_count + 1] = -1 + np.random.randn(list_count)
-        parameter[list_count + 1:] = -np.abs(-2 + np.random.randn(list_count * (list_count - 1) // 2))
+        parameter[list_count + 1:] = -2 + 0.1*np.abs(-2 + np.random.randn(list_count * (list_count - 1) // 2))
         # parameter = np.clip(parameter, -3,3)
         # parameter /= np.abs(np.max(parameter))/10
     if parameter_to_lambdas is None:
@@ -21,95 +18,7 @@ def sample_poisson_counts_naive(list_count, parameter=None, parameter_to_lambdas
     lambdas = np.exp(np.dot(parameter_to_lambdas, parameter))
     return parameter, np.random.poisson(lambdas, lambdas.size)
 
-
-# @jit(nopython=True)
-def compute_lambda_single_beta(parameter, A=None):
-    '''
-    Compute sum A' lambda_A' over all A' \subseteq A in a dynamic programming fashion in time O(|A|^2) instead of naive O(2^|A|)
-    :param parameter: vector containing mu, alphas and the single_beta (has to be a array to work with numba)
-    :param A: the index vector A \subseteq {1,...,K} (has to be a array to work with numba)
-    :return:  sum A' lambda_A' over all A' \subseteq A
-    '''
-
-    exp_mu = np.exp(parameter[0])
-    if A is None:
-        exp_alphas = np.exp(parameter[1:-1])
-    else:
-        exp_alphas = np.exp(parameter[1 + A])
-
-    beta = parameter[-1]
-
-    K = exp_alphas.size
-
-    summed_lambda_A = 0
-
-    dp = np.copy(exp_alphas)
-
-    summed_lambda_A += 1 + np.sum(dp)
-
-    betas_with_correct_counts = beta * np.arange(2, K + 1) * np.arange(1,
-                                                                       K) / 2  # (2 choose 2)*beta,(3 choose 2)*beta,...(K choose 2)*beta
-    exp_betas = np.exp(betas_with_correct_counts)
-
-    for i in range(K - 1):
-
-        # dp[:-i] = alphas[:-i]*dp[1:K-(i-1)]
-
-        # log_lambda_A += np.power(beta, (i*(i-1))//2)*np.sum(dp[:-i])
-
-        prev_sum = 0
-
-        for j in range(K - 1, i, -1):
-            prev_sum += dp[j]
-            dp[j] = exp_alphas[j - 1 - i] * prev_sum
-            summed_lambda_A += exp_betas[i] * dp[j]
-
-    summed_lambda_A *= exp_mu
-    return summed_lambda_A
-
-
-# @jit(nopython=True)
-def compute_lambda_single_beta_for_grad(parameter):
-    '''
-    Compute sum_A lambda_A over all A with |A| >= 2 in a dynamic programming fashion in time O(|A|^2) instead of naive O(2^|A|)
-    :param parameter: vector containing mu, alphas and the single_beta (has to be a array to work with numba)
-    :return: sum_A lambda_A over all A with |A| >= 2
-    '''
-
-    exp_mu = np.exp(parameter[0])
-    exp_alphas = np.exp(parameter[1:-1])
-
-    beta = parameter[-1]
-
-    K = exp_alphas.size
-
-    summed_lambda_A = 0
-
-    dp = np.copy(exp_alphas)
-
-    betas_with_correct_counts = beta * np.arange(2, K + 1) * np.arange(1,  K) / 2  # (2 choose 2)*beta,(3 choose 2)*beta,...(K choose 2)*beta
-    exp_betas = np.exp(betas_with_correct_counts)
-
-    for i in range(exp_alphas.size - 1):
-
-        # dp[:-i] = alphas[:-i]*dp[1:K-(i-1)]
-
-        # log_lambda_A += np.power(beta, (i*(i-1))//2)*np.sum(dp[:-i])
-
-        prev_sum = 0
-
-        for j in range(K - 1, i, -1):
-            prev_sum += dp[j]
-            dp[j] = exp_alphas[j - 1 - i] * prev_sum
-            summed_lambda_A += exp_betas[i] * dp[j]
-
-    summed_lambda_A *= exp_mu
-    return summed_lambda_A
-
-
 num = 0
-
-
 def __sample_poisson_recursive__(parameter, K, current_population_size=0, inside=set(), silverman_lists=[],
                                  silverman_counts=[]):
     global num

@@ -5,6 +5,8 @@ from sympy.utilities.iterables import multiset_permutations
 
 
 #expects exponential/full (also empty intersection) representation
+import singlebetalikelihood
+
 
 def get_index_matrix_alphas_only(N):
     A = np.array(list(itertools.product([0, 1], repeat=N))).T
@@ -51,14 +53,24 @@ def neg_likelihood_naive(x, parameter_indexer, lambda_indexer, counts, enforce_z
 
 def neg_derrivative_naive(x, parameter_indexer, lambda_indexer, counts, enforce_zero):
     lambdas = np.exp(np.dot(lambda_indexer, x))
-    derr = -np.dot(parameter_indexer, counts - lambdas)
-    derr[enforce_zero] = 0
-    return derr
+    der = -np.dot(parameter_indexer, counts - lambdas)
+    der[enforce_zero] = 0
+    return der
 
 def optimize_naive(counts,N,x,enforce_zero=None):
     if enforce_zero is None:
         enforce_zero = [False]*x.size
     parameter_indexer = get_index_matrix(N)
     lambda_indexer = get_lambda_matrix(N)
+    x[1+N:] = x[1+N]
+    print(neg_likelihood_naive(x, parameter_indexer, lambda_indexer, counts, enforce_zero))
+    counts_indexer = get_index_matrix_alphas_only(N).T[:, 1:]
+    counts_indexer = counts_indexer[counts > 0]
+    print(singlebetalikelihood.neg_likelihood(x[:(1+N+1)], counts_indexer, counts[counts > 0]), )
+
+    print(neg_derrivative_naive(x, parameter_indexer, lambda_indexer, counts, enforce_zero))
+    print(singlebetalikelihood.neg_derivative(x[:(1 + N + 1)], counts_indexer, counts[counts > 0]), )
+
+
     sol = minimize(neg_likelihood_naive, x, (parameter_indexer, lambda_indexer, counts, enforce_zero), method='L-BFGS-B', jac=neg_derrivative_naive)
     return sol, parameter_indexer, lambda_indexer, enforce_zero

@@ -97,11 +97,15 @@ def synthetic_data_experiments():
     ax.legend()
     plt.savefig("test.png")
 
+def printx(args):
+    print(args.fun)
+
 def comparison():
+    np.random.seed(5)
     correct_naive = 0
     correct_approx = 0
     correct_alphas_only = 0
-    experiment_count = 50
+    experiment_count = 100
 
     error = 0.05
 
@@ -111,7 +115,7 @@ def comparison():
     accuracies_single_beta = []
 
     for i in range(experiment_count):
-        N = 10
+        N = 6
         param_count = 1 + N + N * (N - 1) // 2
         true_params, counts_exp = datagenerator.sample_poisson_counts_naive(N)
         counts = counts_exp[counts_exp > 0]
@@ -144,8 +148,7 @@ def comparison():
 
         x = np.append(np.append(mu, alphas), betas)
 
-        approx_exp_mu = minimize(skiplikelihood.neg_likelihood_vectorized, x, (A, counts)).x[0]#, method='L-BFGS-B',
-                         #  jac=skiplikelihood.neg_derivative_vectorized).x[0]
+        approx_exp_mu = minimize(skiplikelihood.neg_likelihood_vectorized, x, (A, counts), method='L-BFGS-B', jac=skiplikelihood.neg_derivative_vectorized).x[0]
         approx_exp_mu = np.exp(approx_exp_mu)
         accuracy_approx = np.abs(np.exp(true_params[0]) - approx_exp_mu) / np.exp(true_params[0])
         accuracies_approx.append(accuracy_approx)
@@ -154,7 +157,7 @@ def comparison():
 
         #alphas_only
         x = np.append(mu, alphas)
-        alphas_exp_mu = minimize(alphasonlylinearlikelihood.neg_likelihood_alphas_only, x, (counts_indexer, counts)).x[0]#, method='L-BFGS-B', jac=alphasonlylinearlikelihood.neg_derivative_alphas_only).x[0]
+        alphas_exp_mu = minimize(alphasonlylinearlikelihood.neg_likelihood_alphas_only, x, (counts_indexer, counts), method='L-BFGS-B', jac=alphasonlylinearlikelihood.neg_derivative_alphas_only).x[0]
 
         alphas_exp_mu = np.exp(alphas_exp_mu)
         accuracy_alphas= np.abs(np.exp(true_params[0]) - alphas_exp_mu) / np.exp(true_params[0])
@@ -164,8 +167,9 @@ def comparison():
 
         #single beta
         counts_indexer = counts_indexer.astype(np.int)
-        x = np.append(np.append(mu, alphas), np.random.randn())
-        single_betas_exp_mu = minimize(singlebetalikelihood.neg_likelihood, x, (counts_indexer, counts)).x[0]#, method='L-BFGS-B', jac=singlebetalikelihood.neg_derivative).x[0]
+        x = np.append(np.append(mu, np.random.randn(N)), np.random.randn())
+        #x[-1] = 0
+        single_betas_exp_mu = minimize(singlebetalikelihood.neg_likelihood, x, (counts_indexer, counts), method='L-BFGS-B', jac=singlebetalikelihood.neg_derivative).x[0]
         single_betas_exp_mu = np.exp(single_betas_exp_mu)
         accuracy_single_beta = np.abs(np.exp(true_params[0]) - single_betas_exp_mu) / np.exp(true_params[0])
         accuracies_single_beta.append(accuracy_single_beta)
@@ -177,7 +181,7 @@ def comparison():
         #            alphas_exp_mu      , np.abs(np.exp(true_params[0]) - alphas_exp_mu) / np.exp(true_params[0]), accuracy_alphas < error,
         #           single_betas_exp_mu, np.abs(np.exp(true_params[0]) - single_betas_exp_mu) / np.exp(true_params[0]), accuracy_single_beta < error))
 
-
+        print(i)
 
     print(correct_naive / experiment_count)
     print(correct_approx / experiment_count)
