@@ -1,5 +1,6 @@
 import numpy as np
 from numba import jit
+#import numba
 
 def neg_likelihood(x, lists, counts):
     '''
@@ -10,21 +11,22 @@ def neg_likelihood(x, lists, counts):
     :param counts: array with all the counts for each index vector
     :return:
     '''
-    K = len(x) - 2
+    K = (len(x) -1)//2
     # print(alphas)
     # print(lists)
 
     mu = x[0]
-    alphas = x[1:-1]
-    beta = x[-1]
+    alphas = x[1:K+1]
+    betas = x[K+1:]
 
-    beta_count = np.sum(lists, axis=1)
-    beta_count = beta_count * (beta_count - 1) / 2
+    intersection_sizes = np.sum(lists, axis=1)
+    log_lambdas = np.zeros(lists.shape[0])
 
-    log_lambdas = mu + np.dot(lists, alphas) + beta_count * beta #only those lambdas with N_A>0
+    for i in range(lists.shape[0]):
+        log_lambdas[i] = mu + np.dot(lists[i], alphas) + np.sum(np.arange(intersection_sizes[i]-1, -1, -1)*betas[lists[i].astype(np.bool)]) #only those lambdas with N_A>0
 
     data_term = np.dot(counts, log_lambdas)
-    parameter_term = compute_lambda_single_beta(x, np.arange(K))
+    parameter_term = compute_lambda_linear_betas(x, K, np.arange(K))
 
     likelihood = data_term - parameter_term
 
@@ -68,13 +70,11 @@ def neg_derivative(x, lists, counts):
     return -grad
 
 @jit(nopython=True)
-def compute_lambda_single_beta(parameter, A=None, additional_betas=0, only_subsets_of_size = -1):
+def compute_lambda_linear_betas(parameter, K, A=None):
     '''
     Compute sum A' lambda_A' over all \emptyset \neq A' \subseteq A in a dynamic programming fashion in time O(|A|^2) instead of naive O(2^|A|)
     :param parameter: vector containing mu, alphas and the single_beta (has to be a array to work with numba)
     :param A: the index vector A \subseteq {1,...,K} (has to be a array to work with numba)
-    :additional_betas: multiply all values with additional betas (is used for the derivative)
-    :only_subsets_of_size: if -1 return all lambda_A', otherwise return only the sum over all lambda_A', with |A'| = only_subsets_of_size
     :return:  sum A' lambda_A' over all \emptyset \neq A' \subseteq A
     '''
 
@@ -84,11 +84,11 @@ def compute_lambda_single_beta(parameter, A=None, additional_betas=0, only_subse
 
     exp_mu = np.exp(parameter[0])
     if A is None:
-        exp_alphas = np.exp(parameter[1:-1])
+        exp_alphas = np.exp(parameter[1:1+K])
     else:
         exp_alphas = np.exp(parameter[1 + A])
 
-    beta = parameter[-1]
+    betas = parameter[1+K:]
 
     K = exp_alphas.size
 
@@ -96,13 +96,9 @@ def compute_lambda_single_beta(parameter, A=None, additional_betas=0, only_subse
 
     dp = np.copy(exp_alphas)
 
-    if only_subsets_of_size <= 1:
-        summed_lambda_A += np.sum(exp_alphas*np.exp(additional_betas*beta))
+    summed_lambda_A += np.sum(exp_alphas)
 
-    betas_with_correct_counts = beta * (np.arange(2+additional_betas, K + 1+additional_betas) * \
-                                np.arange(1+additional_betas, K+additional_betas) / 2)  # (2 choose 2)*beta,(3 choose 2)*beta,...(K choose 2)*beta
-
-    exp_betas = np.exp(betas_with_correct_counts)
+    exp_betas = np.exp(betas)
 
     for i in range(K - 1):
 
@@ -114,64 +110,9 @@ def compute_lambda_single_beta(parameter, A=None, additional_betas=0, only_subse
 
         for j in range(K - 1, i, -1):
             prev_sum += dp[j]
-            dp[j] = exp_alphas[j - 1 - i] * prev_sum
-            if only_subsets_of_size == -1 or i + 2 == only_subsets_of_size:
-                summed_lambda_A += exp_betas[i] * dp[j]
-
-        if i + 2 == only_subsets_of_size:
-            return summed_lambda_A * exp_mu
+            dp[j] = np.exp(betas[j-1-i]*(i+1))*exp_alphas[j - 1 - i] * prev_sum
+            summed_lambda_A += dp[j]
 
     summed_lambda_A *= exp_mu
     #summed_lambda_A *= np.exp(max_value)
     return summed_lambda_A
-
-@jit(nopython=True)
-def compute_lambda_single_beta_for_grad(parameter):
-    '''
-    Compute sum_A lambda_A over all A with |A| >= 2 in a dynamic programming fashion in time O(|A|^2) instead of naive O(2^|A|)
-    :param parameter: vector containing mu, alphas and the single_beta (has to be a array to work with numba)
-    :return: sum_A lambda_A over all A with |A| >= 2
-    '''
-
-    exp_mu = np.exp(parameter[0])
-    exp_alphas = np.exp(parameter[1:-1])
-
-    beta = parameter[-1]
-
-    K = exp_alphas.size
-
-    summed_lambda_A = 0
-
-    dp = np.copy(exp_alphas)
-
-    correct_counts = np.arange(2, K + 1) * np.arange(1,  K) / 2  # (2 choose 2,(3 choose 2),...(K choose 2)
-    exp_betas = np.exp(beta*correct_counts)
-
-    for i in range(exp_alphas.size - 1):
-
-        # dp[:-i] = alphas[:-i]*dp[1:K-(i-1)]
-
-        # log_lambda_A += np.power(beta, (i*(i-1))//2)*np.sum(dp[:-i])
-
-        prev_sum = 0
-
-        for j in range(K - 1, i, -1):
-            prev_sum += dp[j]
-            dp[j] = exp_alphas[j - 1 - i] * prev_sum
-            summed_lambda_A += correct_counts[i]*exp_betas[i] * dp[j]
-
-    summed_lambda_A *= exp_mu
-    return summed_lambda_A
-
-if __name__ == "__main__":
-    lists = np.array([[0, 0, 1],
-                      [0, 1, 0],
-                      [1, 0, 0],
-                      [1, 0, 1],
-                      [0, 1, 1],
-                      [1, 1, 0],
-                      [1, 1, 1]])
-
-    counts = np.arange(1, 8)
-
-    neg_derivative(np.array([np.log(10), 0, 0, 0, np.log(0.5)]), lists, counts)

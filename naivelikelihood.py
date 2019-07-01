@@ -12,7 +12,7 @@ def get_index_matrix_alphas_only(N):
     A = np.array(list(itertools.product([0, 1], repeat=N))).T
     A = np.append([np.ones(2**N)], A, axis=0)
     A[0,0] = 0
-    return A[:,1:]
+    return A[:, 1:]
 
 def get_index_matrix(N):
     A = get_index_matrix_alphas_only(N)
@@ -63,13 +63,13 @@ def optimize_naive(counts,N,x,enforce_zero=None):
     parameter_indexer = get_index_matrix(N)
     lambda_indexer = get_lambda_matrix(N)
     x[1+N:] = x[1+N]
-    print(neg_likelihood_naive(x, parameter_indexer, lambda_indexer, counts, enforce_zero))
+    #print(neg_likelihood_naive(x, parameter_indexer, lambda_indexer, counts, enforce_zero))
     counts_indexer = get_index_matrix_alphas_only(N).T[:, 1:]
     counts_indexer = counts_indexer[counts > 0]
-    print(singlebetalikelihood.neg_likelihood(x[:(1+N+1)], counts_indexer, counts[counts > 0]), )
+    #print(singlebetalikelihood.neg_likelihood(x[:(1+N+1)], counts_indexer, counts[counts > 0]), )
 
-    print(neg_derrivative_naive(x, parameter_indexer, lambda_indexer, counts, enforce_zero))
-    print(singlebetalikelihood.neg_derivative(x[:(1 + N + 1)], counts_indexer, counts[counts > 0]), )
+    #print(neg_derrivative_naive(x, parameter_indexer, lambda_indexer, counts, enforce_zero))
+    #print(singlebetalikelihood.neg_derivative(x[:(1 + N + 1)], counts_indexer, counts[counts > 0]), )
 
 
     sol = minimize(neg_likelihood_naive, x, (parameter_indexer, lambda_indexer, counts, enforce_zero), method='L-BFGS-B', jac=neg_derrivative_naive)

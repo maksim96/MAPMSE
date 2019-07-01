@@ -3,8 +3,11 @@ import numpy as np
 import alphasonlylinearlikelihood
 import datagenerator
 from scipy.optimize import minimize
+
+import linearbetalikelihood
 import skiplikelihood
 import naivelikelihood
+import somebetaslikelihood
 from naivelikelihood import neg_likelihood_naive, neg_derrivative_naive
 import matplotlib.pyplot as plt
 import scipy.stats as stats
@@ -113,9 +116,11 @@ def comparison():
     accuracies_approx = []
     accuracies_alphas_only = []
     accuracies_single_beta = []
+    accuracies_linear_beta = []
+    accuracies_some_beta = []
 
     for i in range(experiment_count):
-        N = 6
+        N = 4
         param_count = 1 + N + N * (N - 1) // 2
         true_params, counts_exp = datagenerator.sample_poisson_counts_naive(N)
         counts = counts_exp[counts_exp > 0]
@@ -165,7 +170,8 @@ def comparison():
         if accuracy_alphas < error:
             correct_alphas_only += 1
 
-        #single beta
+
+        # single beta
         counts_indexer = counts_indexer.astype(np.int)
         x = np.append(np.append(mu, np.random.randn(N)), np.random.randn())
         #x[-1] = 0
@@ -174,12 +180,27 @@ def comparison():
         accuracy_single_beta = np.abs(np.exp(true_params[0]) - single_betas_exp_mu) / np.exp(true_params[0])
         accuracies_single_beta.append(accuracy_single_beta)
 
+        # linear betas
+        x = np.append(np.append(mu, np.random.randn(N)), np.random.randn(N))
+        # x[-1] = 0
+        linear_betas_exp_mu = minimize(linearbetalikelihood.neg_likelihood, x, (counts_indexer, counts)).x[0]
+        linear_betas_exp_mu = np.exp(linear_betas_exp_mu)
+        accuracy_linear_beta = np.abs(np.exp(true_params[0]) - linear_betas_exp_mu) / np.exp(true_params[0])
+        accuracies_linear_beta.append(accuracy_linear_beta)
 
-        #print("%.2f;     %.2f %.2f %r;       %.2f %.2f %r;      %.2f %.2f %r;      %.2f %.2f %r" % (np.exp(true_params[0]),\
-        #            fitted_exp_mu      , np.abs(np.exp(true_params[0]) - fitted_exp_mu) / np.exp(true_params[0]), accuracy_naive < error,\
-        #            approx_exp_mu      , np.abs(np.exp(true_params[0]) - approx_exp_mu) / np.exp(true_params[0]), accuracy_approx < error,\
-        #            alphas_exp_mu      , np.abs(np.exp(true_params[0]) - alphas_exp_mu) / np.exp(true_params[0]), accuracy_alphas < error,
-        #           single_betas_exp_mu, np.abs(np.exp(true_params[0]) - single_betas_exp_mu) / np.exp(true_params[0]), accuracy_single_beta < error))
+        # some betas
+        x = np.append(np.append(mu, np.random.randn(N)), np.zeros(N*(N-1)//2))#np.random.randn(N*(N-1)//2))
+        # x[-1] = 0
+        some_betas_exp_mu = minimize(somebetaslikelihood.neg_likelihood, x, (N, counts_indexer, counts), options={'disp':True}).x
+        some_betas_exp_mu = np.exp(some_betas_exp_mu[0])
+        accuracy_some_beta = np.abs(np.exp(true_params[0]) - some_betas_exp_mu) / np.exp(true_params[0])
+        accuracies_some_beta.append(accuracy_some_beta)
+
+        print("%.2f;     %.2f %.2f %r;       %.2f %.2f %r;      %.2f %.2f %r;      %.2f %.2f %r" % (np.exp(true_params[0]),\
+                    fitted_exp_mu      , np.abs(np.exp(true_params[0]) - fitted_exp_mu) / np.exp(true_params[0]), accuracy_naive < error,\
+                    approx_exp_mu      , np.abs(np.exp(true_params[0]) - approx_exp_mu) / np.exp(true_params[0]), accuracy_approx < error,\
+                    alphas_exp_mu      , np.abs(np.exp(true_params[0]) - alphas_exp_mu) / np.exp(true_params[0]), accuracy_alphas < error,
+                   single_betas_exp_mu, np.abs(np.exp(true_params[0]) - single_betas_exp_mu) / np.exp(true_params[0]), accuracy_single_beta < error))
 
         print(i)
 
@@ -187,34 +208,44 @@ def comparison():
     print(correct_approx / experiment_count)
     print(correct_alphas_only / experiment_count)
 
-    print(accuracies_single_beta)
+    print(accuracies_some_beta)
 
     fig, ax = plt.subplots()
 
 
-    stats.probplot(accuracies_naive, dist=stats.uniform, plot=plt)
-    stats.probplot(accuracies_approx, dist=stats.uniform, plot=plt)
-    stats.probplot(accuracies_alphas_only, dist=stats.uniform, plot=plt)
-    stats.probplot(accuracies_single_beta, dist=stats.uniform, plot=plt)
+    stats.probplot([num for num in accuracies_naive if num <= 100], dist=stats.uniform, plot=plt)
+    stats.probplot([num for num in accuracies_approx if num <= 100], dist=stats.uniform, plot=plt)
+    stats.probplot([num for num in accuracies_alphas_only if num <= 100], dist=stats.uniform, plot=plt)
+    stats.probplot([num for num in accuracies_single_beta if num <= 100], dist=stats.uniform, plot=plt)
+    stats.probplot([num for num in accuracies_linear_beta if num <= 100], dist=stats.uniform, plot=plt)
+    stats.probplot([num for num in accuracies_some_beta if num <= 100], dist=stats.uniform, plot=plt)
 
     # Remove the regression lines
     ax.get_lines()[1].remove()
     ax.get_lines()[2].remove()
     ax.get_lines()[3].remove()
     ax.get_lines()[4].remove()
+    ax.get_lines()[5].remove()
+    ax.get_lines()[6].remove()
     # Change colour of scatter
     ax.get_lines()[0].set_markerfacecolor('C0')
     ax.get_lines()[1].set_markerfacecolor('C1')
     ax.get_lines()[2].set_markerfacecolor('C2')
     ax.get_lines()[3].set_markerfacecolor('C3')
+    ax.get_lines()[4].set_markerfacecolor('C4')
+    ax.get_lines()[5].set_markerfacecolor('C5')
     ax.get_lines()[0].set_label("Full Optimization")
     ax.get_lines()[1].set_label("Heuristic")
     ax.get_lines()[2].set_label("Alphas Only")
     ax.get_lines()[3].set_label("Single Beta")
+    ax.get_lines()[4].set_label("Linear Betas")
+    ax.get_lines()[5].set_label("Some Betas")
     ax.get_lines()[0].set_markersize(3.0)
     ax.get_lines()[1].set_markersize(3.0)
     ax.get_lines()[2].set_markersize(3.0)
     ax.get_lines()[3].set_markersize(3.0)
+    ax.get_lines()[4].set_markersize(3.0)
+    ax.get_lines()[5].set_markersize(3.0)
 
     #ax.axvline(x=correct_naive / experiment_count, color='C0')
     #ax.axvline(x=correct_approx / experiment_count, color='C1')

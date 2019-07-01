@@ -10,7 +10,7 @@ def sample_poisson_counts_naive(list_count, parameter=None, parameter_to_lambdas
         parameter = np.zeros(1 + list_count + list_count * (list_count - 1) // 2)
         parameter[0] = 10 + 2 * np.random.randn()
         parameter[1:list_count + 1] = -1 + np.random.randn(list_count)
-        parameter[list_count + 1:] = -2 + 0.1*np.abs(-2 + np.random.randn(list_count * (list_count - 1) // 2))
+        parameter[list_count + 1:] = -4 + np.random.randn(list_count * (list_count - 1) // 2)
         # parameter = np.clip(parameter, -3,3)
         # parameter /= np.abs(np.max(parameter))/10
     if parameter_to_lambdas is None:
